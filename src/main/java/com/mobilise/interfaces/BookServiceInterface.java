@@ -1,5 +1,6 @@
 package com.mobilise.interfaces;
 
+import com.mobilise.dto.ApiResponse;
 import com.mobilise.dto.BookDTO;
 import com.mobilise.dto.BorrowingReportDTO;
 import com.mobilise.model.Book;
@@ -11,23 +12,23 @@ import org.springframework.web.multipart.MultipartFile;
 import java.time.LocalDateTime;
 
 public interface BookServiceInterface {
-    Page<Book> getAllBooks(Pageable pageable);
+    ApiResponse<Page<Book>> getAllBooks(Pageable pageable);
 
-    Book getBookByIsbn(String isbn);
+    ApiResponse<Book> getBookByIsbn(String isbn);
 
-    Book createBook(BookDTO bookDTO);
+    ApiResponse<Book> createBook(BookDTO bookDTO);
 
-    Book updateBook(String isbn, BookDTO bookDTO);
+    ApiResponse<Book> updateBook(String isbn, BookDTO bookDTO);
 
-    void deleteBook(String isbn);
+    ApiResponse<Void> deleteBook(String isbn);
 
-    Page<Book> searchBooks(String query, Pageable pageable);
+    ApiResponse<Page<Book>> searchBooks(String query, Pageable pageable);
 
-    BorrowingRecord borrowBook(String isbn);
+    ApiResponse<BorrowingRecord> borrowBook(String isbn);
 
-    BorrowingRecord returnBook(String isbn);
+    ApiResponse<BorrowingRecord> returnBook(String isbn);
 
-    void bulkUploadBooks(MultipartFile file);
+    ApiResponse<Void> bulkUploadBooks(MultipartFile file);
 
-    BorrowingReportDTO generateBorrowingReport(LocalDateTime startDate, LocalDateTime endDate);
+    ApiResponse<BorrowingReportDTO> generateBorrowingReport(LocalDateTime startDate, LocalDateTime endDate);
 }
