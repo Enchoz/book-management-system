@@ -31,4 +31,6 @@ public interface BookServiceInterface {
     ApiResponse<Void> bulkUploadBooks(MultipartFile file);
 
     ApiResponse<BorrowingReportDTO> generateBorrowingReport(LocalDateTime startDate, LocalDateTime endDate);
+
+    ApiResponse<Book> restoreBook(String isbn);
 }

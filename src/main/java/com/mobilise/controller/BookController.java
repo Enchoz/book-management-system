@@ -102,6 +102,20 @@ public class BookController {
                 .body(response);
     }
 
+    @PatchMapping("/restore/{isbn}")
+    @Operation(
+            summary = "Restores a book",
+            description = "Restores a deleted book for borrowing"
+    )
+    public ResponseEntity<ApiResponse<Book>> restoreBook(
+            @Parameter(description = "ISBN of the book to delete", required = true)
+            @PathVariable String isbn) {
+        ApiResponse<Book> response = bookService.restoreBook(isbn);
+        return ResponseEntity
+                .status(response.isSuccess() ? HttpStatus.NO_CONTENT : HttpStatus.NOT_FOUND)
+                .body(response);
+    }
+
     @GetMapping("/search")
     @Operation(
             summary = "Search books by title or author",

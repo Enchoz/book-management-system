@@ -111,27 +111,6 @@ class BookServiceTest {
         assertNull(response.getData());
     }
 
-//
-//    @Test
-//    void getBookByIsbn_WhenNotExists_ShouldThrowException() {
-//        when(bookRepository.findById(anyString())).thenReturn(Optional.empty());
-//
-//        assertThrows(BookNotFoundException.class, () ->
-//                bookService.getBookByIsbn("nonexistent"));
-//        verify(bookRepository).findById(anyString());
-//    }
-
-//    @Test
-//    void createBook_ShouldSaveAndReturnBook() {
-//        when(bookRepository.save(any(Book.class))).thenReturn(testBook);
-//
-//        Book result = bookService.createBook(testBookDTO);
-//
-//        assertNotNull(result);
-//        assertEquals(testBook.getIsbn(), result.getIsbn());
-//        verify(bookRepository).save(any(Book.class));
-//    }
-
     @Test
     void borrowBook_WhenNoCopiesAvailable_ShouldReturnErrorResponse() {
         testBook.setCopiesInStock(0);
@@ -212,7 +191,7 @@ class BookServiceTest {
 
         assertTrue(response.isSuccess());
         assertNull(response.getData());
-        assertEquals("Book deleted successfully", response.getMessage());
+        assertEquals("Book successfully marked as deleted", response.getMessage());
     }
 
     @Test

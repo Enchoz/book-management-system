@@ -1,6 +1,7 @@
 package com.mobilise.service;
 
 import com.mobilise.dto.*;
+import com.mobilise.exception.BookDeleteException;
 import com.mobilise.exception.BookNotFoundException;
 import com.mobilise.exception.InvalidOperationException;
 import com.mobilise.interfaces.BookServiceInterface;
@@ -88,17 +89,57 @@ public class BookService implements BookServiceInterface {
     @Transactional
     public ApiResponse<Void> deleteBook(String isbn) {
         try {
-            if (!bookRepository.existsById(isbn)) {
-                throw new BookNotFoundException("Book not found with ISBN: " + isbn);
+            Book book = bookRepository.findById(isbn)
+                    .orElseThrow(() -> new BookNotFoundException("Book not found with ISBN: " + isbn));
+
+            // Check if book has any active borrowings
+            List<BorrowingRecord> activeBorrowings = borrowingRecordRepository
+                    .findByBookAndReturnedAtIsNull(book);
+
+            if (!activeBorrowings.isEmpty()) {
+                throw new BookDeleteException(
+                        "Cannot delete book as it is currently borrowed. Active borrowings: " +
+                                activeBorrowings.size());
             }
-            bookRepository.deleteById(isbn);
-            return ApiResponse.success(null, "Book deleted successfully");
+
+            // Perform soft delete
+            book.setDeleted(true);
+            book.setDeletedAt(LocalDateTime.now());
+                bookRepository.save(book);
+
+            return ApiResponse.success(null, "Book successfully marked as deleted");
         } catch (BookNotFoundException e) {
             return ApiResponse.error("Book not found",
                     new ErrorDetails("NOT_FOUND", e.getMessage()));
         } catch (Exception e) {
             return ApiResponse.error("Failed to delete book",
                     new ErrorDetails("DELETE_ERROR", e.getMessage()));
+        }
+    }
+
+    //Method to restore a deleted book
+    public ApiResponse<Book> restoreBook(String isbn) {
+        try {
+            Book book = bookRepository.findById(isbn)
+                    .orElseThrow(() -> new BookNotFoundException("Book not found with ISBN: " + isbn));
+
+            if (!book.isDeleted()) {
+                throw new InvalidOperationException("Book is not deleted");
+            }
+
+            book.setDeleted(false);
+            book.setDeletedAt(null);
+            bookRepository.save(book);
+            return ApiResponse.success(book, "Book successfully restored");
+        } catch (BookNotFoundException e) {
+            return ApiResponse.error("Book not found",
+                    new ErrorDetails("NOT_FOUND", e.getMessage()));
+        } catch (InvalidOperationException e) {
+            return ApiResponse.error("Book not found",
+                    new ErrorDetails("INVALID_OPERATION", e.getMessage()));
+        } catch (Exception e) {
+            return ApiResponse.error("Failed to delete book",
+                    new ErrorDetails("RESTORE_ERROR", e.getMessage()));
         }
     }
 
