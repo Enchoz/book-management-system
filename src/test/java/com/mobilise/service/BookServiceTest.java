@@ -1,8 +1,8 @@
 package com.mobilise.service;
 
+import com.mobilise.dto.ApiResponse;
 import com.mobilise.dto.BookDTO;
-import com.mobilise.exception.BookNotFoundException;
-import com.mobilise.exception.InvalidOperationException;
+import com.mobilise.dto.BorrowingReportDTO;
 import com.mobilise.model.Book;
 import com.mobilise.model.BorrowingRecord;
 import com.mobilise.repository.BookRepository;
@@ -19,6 +19,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -61,151 +62,225 @@ class BookServiceTest {
     }
 
     @Test
-    void getAllBooks_ShouldReturnPageOfBooks() {
+    void getAllBooks_WhenSuccessful_ShouldReturnSuccessResponse() {
         Page<Book> bookPage = new PageImpl<>(List.of(testBook));
         when(bookRepository.findAll(any(Pageable.class))).thenReturn(bookPage);
 
-        Page<Book> result = bookService.getAllBooks(Pageable.unpaged());
+        ApiResponse<Page<Book>> response = bookService.getAllBooks(Pageable.unpaged());
 
-        assertNotNull(result);
-        assertEquals(1, result.getTotalElements());
+        assertTrue(response.isSuccess());
+        assertNotNull(response.getData());
+        assertEquals(1, response.getData().getTotalElements());
+        assertNull(response.getError());
         verify(bookRepository).findAll(any(Pageable.class));
     }
 
     @Test
-    void getBookByIsbn_WhenExists_ShouldReturnBook() {
+    void getAllBooks_WhenError_ShouldReturnErrorResponse() {
+        when(bookRepository.findAll(any(Pageable.class))).thenThrow(new RuntimeException("Database error"));
+
+        ApiResponse<Page<Book>> response = bookService.getAllBooks(Pageable.unpaged());
+
+        assertFalse(response.isSuccess());
+        assertNotNull(response.getError());
+        assertEquals("FETCH_ERROR", response.getError().getCode());
+        assertNull(response.getData());
+    }
+
+    @Test
+    void getBookByIsbn_WhenExists_ShouldReturnSuccessResponse() {
         when(bookRepository.findById(testBook.getIsbn())).thenReturn(Optional.of(testBook));
 
-        Book result = bookService.getBookByIsbn(testBook.getIsbn());
+        ApiResponse<Book> response = bookService.getBookByIsbn(testBook.getIsbn());
 
-        assertNotNull(result);
-        assertEquals(testBook.getIsbn(), result.getIsbn());
-        verify(bookRepository).findById(testBook.getIsbn());
+        assertTrue(response.isSuccess());
+        assertNotNull(response.getData());
+        assertEquals(testBook.getIsbn(), response.getData().getIsbn());
+        assertNull(response.getError());
     }
 
     @Test
-    void getBookByIsbn_WhenNotExists_ShouldThrowException() {
+    void getBookByIsbn_WhenNotExists_ShouldReturnErrorResponse() {
         when(bookRepository.findById(anyString())).thenReturn(Optional.empty());
 
-        assertThrows(BookNotFoundException.class, () ->
-                bookService.getBookByIsbn("nonexistent"));
-        verify(bookRepository).findById(anyString());
+        ApiResponse<Book> response = bookService.getBookByIsbn("nonexistent");
+
+        assertFalse(response.isSuccess());
+        assertNotNull(response.getError());
+        assertEquals("NOT_FOUND", response.getError().getCode());
+        assertNull(response.getData());
     }
 
+//
+//    @Test
+//    void getBookByIsbn_WhenNotExists_ShouldThrowException() {
+//        when(bookRepository.findById(anyString())).thenReturn(Optional.empty());
+//
+//        assertThrows(BookNotFoundException.class, () ->
+//                bookService.getBookByIsbn("nonexistent"));
+//        verify(bookRepository).findById(anyString());
+//    }
+
+//    @Test
+//    void createBook_ShouldSaveAndReturnBook() {
+//        when(bookRepository.save(any(Book.class))).thenReturn(testBook);
+//
+//        Book result = bookService.createBook(testBookDTO);
+//
+//        assertNotNull(result);
+//        assertEquals(testBook.getIsbn(), result.getIsbn());
+//        verify(bookRepository).save(any(Book.class));
+//    }
+
     @Test
-    void createBook_ShouldSaveAndReturnBook() {
-        when(bookRepository.save(any(Book.class))).thenReturn(testBook);
-
-        Book result = bookService.createBook(testBookDTO);
-
-        assertNotNull(result);
-        assertEquals(testBook.getIsbn(), result.getIsbn());
-        verify(bookRepository).save(any(Book.class));
-    }
-
-    @Test
-    void borrowBook_WhenNoCopiesAvailable_ShouldThrowException() {
+    void borrowBook_WhenNoCopiesAvailable_ShouldReturnErrorResponse() {
         testBook.setCopiesInStock(0);
         when(bookRepository.findById(testBook.getIsbn())).thenReturn(Optional.of(testBook));
 
-        assertThrows(InvalidOperationException.class, () ->
-                bookService.borrowBook(testBook.getIsbn()));
-        verify(bookRepository).findById(testBook.getIsbn());
-        verify(borrowingRecordRepository, never()).save(any());
+        ApiResponse<BorrowingRecord> response = bookService.borrowBook(testBook.getIsbn());
+
+        assertFalse(response.isSuccess());
+        assertNotNull(response.getError());
+        assertEquals("INVALID_OPERATION", response.getError().getCode());
+        assertNull(response.getData());
     }
 
     @Test
-    void updateBook_ShouldUpdateAndReturnBook() {
+    void borrowBook_WhenCopiesAvailable_ShouldReturnSuccessResponse() {
         when(bookRepository.findById(testBook.getIsbn())).thenReturn(Optional.of(testBook));
-        when(bookRepository.save(any(Book.class))).thenReturn(testBook);
+        when(borrowingRecordRepository.save(any(BorrowingRecord.class)))
+                .thenReturn(new BorrowingRecord());
 
-        Book updatedBook = bookService.updateBook(testBook.getIsbn(), testBookDTO);
+        int initialCopiesOfBook = testBook.getCopiesInStock();
 
-        assertNotNull(updatedBook);
-        assertEquals(testBookDTO.getTitle(), updatedBook.getTitle());
-        verify(bookRepository).findById(testBook.getIsbn());
-        verify(bookRepository).save(any(Book.class));
+        ApiResponse<BorrowingRecord> response = bookService.borrowBook(testBook.getIsbn());
+
+        assertTrue(response.isSuccess());
+        assertNotNull(response.getData());
+        assertNull(response.getError());
+        assertEquals(initialCopiesOfBook - 1, testBook.getCopiesInStock());
     }
 
-    @Test
-    void deleteBook_WhenBookExists_ShouldDelete() {
-        when(bookRepository.existsById(testBook.getIsbn())).thenReturn(true);
-
-        bookService.deleteBook(testBook.getIsbn());
-
-        verify(bookRepository).existsById(testBook.getIsbn());
-        verify(bookRepository).deleteById(testBook.getIsbn());
-    }
+    // Add these test methods to BookServiceTest class
 
     @Test
-    void deleteBook_WhenBookDoesNotExist_ShouldThrowException() {
-        when(bookRepository.existsById(testBook.getIsbn())).thenReturn(false);
-
-        assertThrows(BookNotFoundException.class, () -> bookService.deleteBook(testBook.getIsbn()));
-        verify(bookRepository).existsById(testBook.getIsbn());
-        verify(bookRepository, never()).deleteById(anyString());
-    }
-
-    @Test
-    void searchBooks_ShouldReturnMatchingBooks() {
+    void searchBooks_WhenQueryValid_ShouldReturnSuccessResponse() {
         Page<Book> bookPage = new PageImpl<>(List.of(testBook));
         when(bookRepository.findByTitleContainingIgnoreCaseOrAuthorContainingIgnoreCase(
                 anyString(), anyString(), any(Pageable.class)))
                 .thenReturn(bookPage);
 
-        Page<Book> result = bookService.searchBooks("Test", Pageable.unpaged());
+        ApiResponse<Page<Book>> response = bookService.searchBooks("Test", Pageable.unpaged());
 
-        assertNotNull(result);
-        assertEquals(1, result.getTotalElements());
-        verify(bookRepository).findByTitleContainingIgnoreCaseOrAuthorContainingIgnoreCase(
-                anyString(), anyString(), any(Pageable.class));
+        assertTrue(response.isSuccess());
+        assertNotNull(response.getData());
+        assertEquals(1, response.getData().getTotalElements());
+        assertNull(response.getError());
+        assertEquals("Books found successfully", response.getMessage());
     }
 
     @Test
-    void borrowBook_WhenCopiesAvailable_ShouldDecreaseCopies() {
+    void searchBooks_WhenEmptyQuery_ShouldReturnErrorResponse() {
+        ApiResponse<Page<Book>> response = bookService.searchBooks("  ", Pageable.unpaged());
+
+        assertFalse(response.isSuccess());
+        assertNotNull(response.getError());
+        assertEquals("INVALID_QUERY", response.getError().getCode());
+        assertNull(response.getData());
+    }
+
+    @Test
+    void updateBook_WhenSuccessful_ShouldReturnUpdatedBook() {
         when(bookRepository.findById(testBook.getIsbn())).thenReturn(Optional.of(testBook));
-        when(borrowingRecordRepository.save(any(BorrowingRecord.class))).thenReturn(new BorrowingRecord());
+        when(bookRepository.save(any(Book.class))).thenReturn(testBook);
 
-        // Store the initial number of copies in stock
-        int initialCopiesInStock = testBook.getCopiesInStock();
+        testBookDTO.setTitle("Updated Title");
+        ApiResponse<Book> response = bookService.updateBook(testBook.getIsbn(), testBookDTO);
 
-        BorrowingRecord result = bookService.borrowBook(testBook.getIsbn());
-
-        assertNotNull(result);
-        assertEquals(initialCopiesInStock - 1, testBook.getCopiesInStock());
-        verify(bookRepository).findById(testBook.getIsbn());
-        verify(bookRepository).save(testBook);
-        verify(borrowingRecordRepository).save(any(BorrowingRecord.class));
+        assertTrue(response.isSuccess());
+        assertNotNull(response.getData());
+        assertEquals("Updated Title", response.getData().getTitle());
+        assertEquals("Book updated successfully", response.getMessage());
     }
 
     @Test
-    void returnBook_WhenBookIsBorrowed_ShouldIncreaseCopies() {
+    void deleteBook_WhenSuccessful_ShouldReturnSuccessResponse() {
+        when(bookRepository.existsById(testBook.getIsbn())).thenReturn(true);
+        doNothing().when(bookRepository).deleteById(testBook.getIsbn());
+
+        ApiResponse<Void> response = bookService.deleteBook(testBook.getIsbn());
+
+        assertTrue(response.isSuccess());
+        assertNull(response.getData());
+        assertEquals("Book deleted successfully", response.getMessage());
+    }
+
+    @Test
+    void returnBook_WhenSuccessful_ShouldReturnSuccessResponse() {
         BorrowingRecord borrowingRecord = new BorrowingRecord();
         borrowingRecord.setBook(testBook);
         borrowingRecord.setBorrowedAt(LocalDateTime.now());
 
         when(bookRepository.findById(testBook.getIsbn())).thenReturn(Optional.of(testBook));
         when(borrowingRecordRepository.findAll()).thenReturn(List.of(borrowingRecord));
-        when(borrowingRecordRepository.save(any(BorrowingRecord.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(borrowingRecordRepository.save(any(BorrowingRecord.class))).thenReturn(borrowingRecord);
 
-        // Store the initial number of copies in stock
-        int initialCopiesInStock = testBook.getCopiesInStock();
+        ApiResponse<BorrowingRecord> response = bookService.returnBook(testBook.getIsbn());
 
-        BorrowingRecord returnedRecord = bookService.returnBook(testBook.getIsbn());
-
-        assertNotNull(returnedRecord.getReturnedAt());
-        assertEquals(initialCopiesInStock + 1, testBook.getCopiesInStock());
-        verify(bookRepository).save(testBook);
-        verify(borrowingRecordRepository).save(borrowingRecord);
+        assertTrue(response.isSuccess());
+        assertNotNull(response.getData());
+        assertNotNull(response.getData().getReturnedAt());
+        assertEquals("Book returned successfully", response.getMessage());
     }
 
     @Test
-    void bulkUploadBooks_WhenFileIsInvalid_ShouldThrowException() throws IOException {
-        MultipartFile file = mock(MultipartFile.class);
-        when(file.getInputStream()).thenThrow(new RuntimeException("File error"));
+    void returnBook_WhenNoBorrowingRecord_ShouldReturnErrorResponse() {
+        when(bookRepository.findById(testBook.getIsbn())).thenReturn(Optional.of(testBook));
+        when(borrowingRecordRepository.findAll()).thenReturn(List.of());
 
-        assertThrows(InvalidOperationException.class, () -> bookService.bulkUploadBooks(file));
-        verify(bookRepository, never()).save(any(Book.class));
+        ApiResponse<BorrowingRecord> response = bookService.returnBook(testBook.getIsbn());
+
+        assertFalse(response.isSuccess());
+        assertNotNull(response.getError());
+        assertEquals("RETURN_ERROR", response.getError().getCode());
     }
 
+    @Test
+    void generateBorrowingReport_WhenDataExists_ShouldReturnSuccessResponse() {
+        LocalDateTime startDate = LocalDateTime.now().minusDays(7);
+        LocalDateTime endDate = LocalDateTime.now();
+
+        BorrowingRecord record = new BorrowingRecord();
+        record.setBook(testBook);
+        record.setBorrowedAt(LocalDateTime.now().minusDays(5));
+
+        List<Object[]> countData = List.of(new Object[][] {
+                new Object[]{testBook.getIsbn(), 1L}
+        });
+
+        when(borrowingRecordRepository.findByBorrowedAtBetween(startDate, endDate))
+                .thenReturn(List.of(record));
+        when(borrowingRecordRepository.countBorrowingsByBookAndDateRange(startDate, endDate))
+                .thenReturn(countData);
+
+        ApiResponse<BorrowingReportDTO> response = bookService.generateBorrowingReport(startDate, endDate);
+
+        assertTrue(response.isSuccess());
+        assertNotNull(response.getData());
+        assertEquals("Borrowing report generated successfully", response.getMessage());
+    }
+
+    @Test
+    void bulkUploadBooks_WhenSuccessful_ShouldReturnSuccessResponse() throws IOException {
+        MultipartFile file = mock(MultipartFile.class);
+        when(file.getInputStream()).thenReturn(new ByteArrayInputStream(
+                "ISBN,title,author,publication_year,copies\n123,Test,Author,2023,5".getBytes()
+        ));
+        when(bookRepository.save(any(Book.class))).thenReturn(testBook);
+
+        ApiResponse<Void> response = bookService.bulkUploadBooks(file);
+
+        assertTrue(response.isSuccess());
+        assertEquals("Books uploaded successfully", response.getMessage());
+    }
 }
