@@ -84,7 +84,7 @@ mvn test
 
 The CSV file should have the following headers:
 ```csv
-isbn,title,author,publicationYear,copiesInStock
+ISBN,title,author,publication_year,copies
 ```
 
 Example:
