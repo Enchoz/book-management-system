@@ -112,6 +112,10 @@ public class BookService implements BookServiceInterface {
         List<BorrowingRecord> borrowings = borrowingRecordRepository
                 .findByBorrowedAtBetween(startDate, endDate);
 
+        if (borrowings == null || borrowings.isEmpty()) {
+            return createEmptyBorrowingReport();
+        }
+
         Map<String, Long> borrowingCounts = borrowingRecordRepository
                 .countBorrowingsByBookAndDateRange(startDate, endDate)
                 .stream()
@@ -128,6 +132,13 @@ public class BookService implements BookServiceInterface {
         report.setBorrowingCountsByBook(borrowingCounts);
         report.setBorrowingEvents(events);
         return report;
+    }
+
+    private BorrowingReportDTO createEmptyBorrowingReport() {
+        BorrowingReportDTO emptyReport = new BorrowingReportDTO();
+        emptyReport.setBorrowingCountsByBook(Collections.emptyMap());
+        emptyReport.setBorrowingEvents(Collections.emptyList());
+        return emptyReport;
     }
 
     private void updateBookFromDTO(Book book, BookDTO dto) {
