@@ -1,7 +1,9 @@
 package com.mobilise.exception;
 
-public class InvalidOperationException extends RuntimeException {
+import com.mobilise.constants.ErrorCode;
+
+public class InvalidOperationException extends LibraryException {
     public InvalidOperationException(String message) {
-        super(message);
+        super(ErrorCode.INVALID_OPERATION, message);
     }
 }

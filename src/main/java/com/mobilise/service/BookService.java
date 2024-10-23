@@ -10,6 +10,11 @@ import com.mobilise.model.BorrowingRecord;
 import com.mobilise.repository.BookRepository;
 import com.mobilise.repository.BorrowingRecordRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
+import org.apache.commons.csv.CSVRecord;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -25,6 +30,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class BookService implements BookServiceInterface {
@@ -89,7 +95,7 @@ public class BookService implements BookServiceInterface {
     @Transactional
     public ApiResponse<Void> deleteBook(String isbn) {
         try {
-            Book book = bookRepository.findById(isbn)
+            Book book = bookRepository.findByIsbnAndDeletedIsFalse(isbn)
                     .orElseThrow(() -> new BookNotFoundException("Book not found with ISBN: " + isbn));
 
             // Check if book has any active borrowings
@@ -282,7 +288,7 @@ public class BookService implements BookServiceInterface {
                     .findFirst()
                     .orElseThrow(() -> new InvalidOperationException("No active borrowing record found for this book"));
 
-
+            log.debug("Updating return date and stock count for book: {}", isbn);
             record.setReturnedAt(LocalDateTime.now());
             book.setCopiesInStock(book.getCopiesInStock() + 1);
             bookRepository.save(book);
