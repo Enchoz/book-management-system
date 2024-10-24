@@ -9,15 +9,17 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import lombok.Data;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
 
 import java.time.LocalDateTime;
 
 @Data
 @Entity
 @Table(name = "books")
+@Setter
+@Getter
+@RequiredArgsConstructor
+@AllArgsConstructor
 public class Book {
     @Id
     @NotBlank(message = "ISBN is required")
@@ -37,13 +39,10 @@ public class Book {
     @Min(value = 0, message = "Number of copies cannot be negative")
     private Integer copiesInStock;
 
-    @Setter
-    @Getter
+
     @Column(name = "is_deleted")
     private boolean deleted = false;
 
-    @Setter
-    @Getter
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 }

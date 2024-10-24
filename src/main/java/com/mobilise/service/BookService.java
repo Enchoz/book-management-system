@@ -6,6 +6,7 @@ import com.mobilise.exception.BookDeleteException;
 import com.mobilise.exception.BookNotFoundException;
 import com.mobilise.exception.InvalidOperationException;
 import com.mobilise.interfaces.BookServiceInterface;
+import com.mobilise.mapper.BookMapper;
 import com.mobilise.model.Book;
 import com.mobilise.model.BorrowingRecord;
 import com.mobilise.repository.BookRepository;
@@ -54,8 +55,7 @@ public class BookService implements BookServiceInterface {
     public ApiResponse<Book> getBookByIsbn(String isbn) {
         log.debug("Fetching book with ISBN: {}", isbn);
         try {
-            Book book = bookRepository.findById(isbn)
-                    .orElseThrow(() -> new BookNotFoundException("Book not found with ISBN: " + isbn));
+            Book book = getBookOrElseThrow(isbn);
             log.info("Successfully retrieved book with ISBN: {}", isbn);
             return ApiResponse.success(book, ResponseMessages.BOOK_RETRIEVED);
         } catch (BookNotFoundException e) {
@@ -74,7 +74,7 @@ public class BookService implements BookServiceInterface {
         log.debug("Creating new book with ISBN: {}", bookDTO.getIsbn());
         try {
             Book book = new Book();
-            updateBookFromDTO(book, bookDTO);
+            book = BookMapper.toEntity(bookDTO);
             Book savedBook = bookRepository.save(book);
             log.info("Successfully created book with ISBN: {}", savedBook.getIsbn());
             return ApiResponse.success(savedBook, ResponseMessages.BOOK_CREATED);
@@ -89,7 +89,7 @@ public class BookService implements BookServiceInterface {
     public ApiResponse<Book> updateBook(String isbn, BookDTO bookDTO) {
         log.debug("Updating book with ISBN: {}", bookDTO.getIsbn());
         try {
-            Book book = getBookByIsbn(isbn).getData();
+            Book book = getBookOrElseThrow(isbn);
             updateBookFromDTO(book, bookDTO);
             Book updatedBook = bookRepository.save(book);
             log.info("Successfully updated book with ISBN: {}", updatedBook.getIsbn());
@@ -141,11 +141,11 @@ public class BookService implements BookServiceInterface {
     }
 
     //Method to restore a deleted book
+    @Transactional
     public ApiResponse<Book> restoreBook(String isbn) {
         log.debug("Restoring book with ISBN: {}", isbn);
         try {
-            Book book = bookRepository.findById(isbn)
-                    .orElseThrow(() -> new BookNotFoundException("Book not found with ISBN: " + isbn));
+            Book book = getBookOrElseThrow(isbn);
 
             if (!book.isDeleted()) {
                 throw new InvalidOperationException("Book is not deleted");
@@ -202,24 +202,20 @@ public class BookService implements BookServiceInterface {
     public ApiResponse<BorrowingRecord> borrowBook(String isbn) {
         log.debug("Attempting to borrow book with ISBN: {}", isbn);
         try {
-            Book book = getBookByIsbn(isbn).getData();
+            Book book = getBookOrElseThrow(isbn);
             if (book.getCopiesInStock() <= 0) {
-                log.warn("No copies available for book with ISBN: {}", isbn);
                 throw new InvalidOperationException("No copies available for borrowing");
             }
 
-            log.debug("Updating stock count for book: {}", isbn);
-            book.setCopiesInStock(book.getCopiesInStock() - 1);
-            bookRepository.save(book);
-
-            log.debug("Creating borrowing record for book: {}", isbn);
-            BorrowingRecord record = new BorrowingRecord();
-            record.setBook(book);
-            record.setBorrowedAt(LocalDateTime.now());
-            BorrowingRecord savedRecord = borrowingRecordRepository.save(record);
+            decreaseBookStock(book);
+            BorrowingRecord savedRecord = createBorrowingRecord(book);
 
             log.info("Successfully borrowed book with ISBN: {}", isbn);
             return ApiResponse.success(savedRecord, ResponseMessages.BOOK_BORROWED);
+        } catch (BookNotFoundException e) {
+            log.warn("Failed to borrow book: {}", e.getMessage(), e);
+            return ApiResponse.error("Book not found",
+                    new ErrorDetails(ResponseMessages.NOT_FOUND, e.getMessage()));
         } catch (InvalidOperationException e) {
             log.warn("Invalid operation while borrowing book {}: {}", isbn, e.getMessage());
             return ApiResponse.error("Invalid operation",
@@ -231,23 +227,34 @@ public class BookService implements BookServiceInterface {
         }
     }
 
+    private BorrowingRecord createBorrowingRecord(Book book) {
+        log.debug("Creating borrowing record for book: {}", book.getIsbn());
+        BorrowingRecord record = new BorrowingRecord();
+        record.setBook(book);
+        record.setBorrowedAt(LocalDateTime.now());
+        return borrowingRecordRepository.save(record);
+    }
+
+    private void decreaseBookStock(Book book) {
+        log.debug("Updating stock count for book: {}", book.getIsbn());
+        book.setCopiesInStock(book.getCopiesInStock() - 1);
+        bookRepository.save(book);
+    }
+
+    private Book getBookOrElseThrow(String isbn) {
+        return bookRepository.findById(isbn)
+                .orElseThrow(() -> new BookNotFoundException("Book not found with ISBN: " + isbn));
+    }
+
     @Transactional
     public ApiResponse<Void> bulkUploadBooks(MultipartFile file) {
         log.debug("Attempting to upload file");
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream()));
              CSVParser csvParser = new CSVParser(reader, CSVFormat.DEFAULT.withHeader())) {
-
-            for (CSVRecord record : csvParser) {
-                BookDTO bookDTO = new BookDTO();
-                bookDTO.setIsbn(record.get("ISBN"));
-                bookDTO.setTitle(record.get("title"));
-                bookDTO.setAuthor(record.get("author"));
-                bookDTO.setPublicationYear(Integer.parseInt(record.get("publication_year")));
-                bookDTO.setCopiesInStock(Integer.parseInt(record.get("copies")));
-
-                createBook(bookDTO);
-            }
-
+            List<Book> books = csvParser.getRecords().stream()
+                    .map(this::convertCsvRecordToBook)
+                    .collect(Collectors.toList());
+            bookRepository.saveAll(books);
             log.info("Successfully uploaded file");
             return ApiResponse.success(null, ResponseMessages.BOOKS_UPLOADED);
         } catch (Exception e) {
@@ -255,6 +262,16 @@ public class BookService implements BookServiceInterface {
             return ApiResponse.error("Failed to process CSV file",
                     new ErrorDetails(ResponseMessages.UPLOAD_ERROR, e.getMessage()));
         }
+    }
+
+    private Book convertCsvRecordToBook(CSVRecord record) {
+        Book book = new Book();
+        book.setIsbn(record.get("ISBN"));
+        book.setTitle(record.get("title"));
+        book.setAuthor(record.get("author"));
+        book.setPublicationYear(Integer.parseInt(record.get("publication_year")));
+        book.setCopiesInStock(Integer.parseInt(record.get("copies")));
+        return  book;
     }
 
     @Transactional(readOnly = true)
@@ -325,16 +342,10 @@ public class BookService implements BookServiceInterface {
                     .orElseThrow(() -> new BookNotFoundException("Book not found with id: " + isbn));
 
             // Find the most recent unreturned borrowing record for this book
-            BorrowingRecord record = borrowingRecordRepository.findAll().stream()
-                    .filter(br -> br.getBook().getIsbn().equals(isbn))
-                    .filter(br -> br.getReturnedAt() == null)
-                    .findFirst()
+            BorrowingRecord record = borrowingRecordRepository.findFirstByBookAndReturnedAtIsNull(book)
                     .orElseThrow(() -> new InvalidOperationException("No active borrowing record found for this book"));
 
-            log.debug("Updating return date and stock count for book: {}", isbn);
-            record.setReturnedAt(LocalDateTime.now());
-            book.setCopiesInStock(book.getCopiesInStock() + 1);
-            bookRepository.save(book);
+            IncreaseBookStock(record, book);
 
             borrowingRecordRepository.save(record);
 
@@ -349,5 +360,12 @@ public class BookService implements BookServiceInterface {
             return ApiResponse.error("Failed to return book",
                     new ErrorDetails(ResponseMessages.RETURN_ERROR, e.getMessage()));
         }
+    }
+
+    private void IncreaseBookStock(BorrowingRecord record, Book book) {
+        log.debug("Updating return date and stock count for book: {}", book.getIsbn());
+        record.setReturnedAt(LocalDateTime.now());
+        book.setCopiesInStock(book.getCopiesInStock() + 1);
+        bookRepository.save(book);
     }
 }

@@ -4,8 +4,10 @@ import com.mobilise.model.Book;
 import com.mobilise.model.BorrowingRecord;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 public interface BorrowingRecordRepository extends JpaRepository<BorrowingRecord, Long> {
     List<BorrowingRecord> findByBorrowedAtBetween(LocalDateTime start, LocalDateTime end);
@@ -15,4 +17,6 @@ public interface BorrowingRecordRepository extends JpaRepository<BorrowingRecord
     List<Object[]> countBorrowingsByBookAndDateRange(LocalDateTime start, LocalDateTime end);
 
     List<BorrowingRecord> findByBookAndReturnedAtIsNull(Book book);
+
+    Optional<BorrowingRecord> findFirstByBookAndReturnedAtIsNull(Book book);
 }
