@@ -181,7 +181,7 @@ class BookServiceTest {
         assertTrue(response.isSuccess());
         assertNotNull(response.getData());
         assertEquals("Updated Title", response.getData().getTitle());
-        assertEquals(ResponseMessages.BOOKS_UPLOADED, response.getMessage());
+        assertEquals(ResponseMessages.BOOK_UPDATED, response.getMessage());
     }
 
     @Test
